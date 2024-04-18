@@ -1,16 +1,15 @@
-# This is a sample Python script.
+import socket
+from  ConnectionHandler.Balancer import Balancer
+import settings
 
-# Press Shift+F10 to execute it or replace it with your code.
-# Press Double Shift to search everywhere for classes, files, tool windows, actions, and settings.
-
-
-def print_hi(name):
-    # Use a breakpoint in the code line below to debug your script.
-    print(f'Hi, {name}')  # Press Ctrl+F8 to toggle the breakpoint.
+config = settings.getSettings()
+threadPool = Balancer(config["thread count"])
 
 
-# Press the green button in the gutter to run the script.
-if __name__ == '__main__':
-    print_hi('PyCharm')
+sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM, 0 )
+sock.bind((config["ip"], config["port"]))
+sock.listen()
 
-# See PyCharm help at https://www.jetbrains.com/help/pycharm/
+while True:
+    client = sock.accept()
+    threadPool.add_connection(client)
