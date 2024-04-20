@@ -91,6 +91,7 @@ void fastCgiRequest(int sd,const char* file)
     }
 }
 
+#ifdef TEST
 int main()
 {
 
@@ -129,3 +130,5 @@ int main()
  
     close(sockfd);
 }
+
+#endif
