@@ -2,9 +2,10 @@
 
 using namespace std;
 
-const char* Names[5] = {"SCRIPT_NAME", "SCRIPT_FILENAME", "QUERY_STRING", "DOCUMENT_ROOT", "REQUEST_METHOD"};
-const char* Values[5] = { nullptr, nullptr, "VAR1", "/usr/local/sbin", "GET"};
-
+const char* Names[6] = {"SCRIPT_NAME", "SCRIPT_FILENAME", "QUERY_STRING", "REQUEST_METHOD", "CONTENT_LENGTH", "CONTENT_TYPE"};
+const char* Values[6] = { nullptr, nullptr, "VAR1", nullptr, nullptr, nullptr};
+int nv_to_send = 0; 
+char* buff = nullptr;
 
 void encodeLen(char* arr, unsigned int size)
 {
@@ -30,7 +31,7 @@ void sendNameValuePairs(int sd)
 {
     char encodedNameLen[4];
     char encodedValueLen[4];
-    for(int i=0; i < 5; i++)
+    for(int i=0; i < nv_to_send; i++)
     {
         unsigned int nameLength = strlen(Names[i]);
         unsigned int valueLength = strlen(Values[i]);
@@ -65,12 +66,18 @@ void sendNameValuePairs(int sd)
         free(buffer);
     }
 
+    FCGI_Header empty_params;
+    empty_params= {
+        FCGI_VERSION_1, FCGI_PARAMS, 
+        (char)(0x1244 >> 8),(char) (0x1244 & 0xFF),
+        0, 0,0, 0,
+    };
+    sendValidation( write(sd, &empty_params, sizeof(FCGI_Header) ) ); 
+
 }
 
-extern "C" const char* fastCgiRequest(int sd, const char* file)
+void beginCgiRequest(int sd)
 {
-    Values[0] = file;
-    Values[1] = file;
     FCGI_BeginRequestRecord init_req;
     init_req= {  FCGI_VERSION_1, FCGI_BEGIN_REQUEST, 
         (char)(0x1234 >> 8), ((char)0x1234 & 0xFF),
@@ -79,33 +86,93 @@ extern "C" const char* fastCgiRequest(int sd, const char* file)
         0, 0, 0, 0, 0, 0, 
     };
 
-    sendValidation( write(sd, &init_req, sizeof(FCGI_BeginRequestRecord)) );
+    sendValidation( write(sd, &init_req, sizeof(FCGI_BeginRequestRecord) ) ); 
+}
 
-
+void sendArgsToStdin(int sd, const char* args)
+{
+    unsigned int len = strlen(args);
     FCGI_Header target_req;
     target_req= {
+        FCGI_VERSION_1, FCGI_STDIN , 
+        (char)(0x1244 >> 8),(char) (0x1244 & 0xFF),
+        (unsigned char)(len >> 8), (unsigned char)(len & 0xFF)
+        ,0, 0,
+    };
+    
+    char* stdinBuff = new char[sizeof(FCGI_Header) + len];
+    memcpy(stdinBuff, &target_req, sizeof(FCGI_Header));
+    memcpy(stdinBuff + sizeof(FCGI_Header), args, len);
+    sendValidation( write(sd, stdinBuff, sizeof(FCGI_Header) + len ) ); 
+}
+
+void endCgiRequest(int sd)
+{
+    
+    FCGI_Header empty_stdin;
+    empty_stdin= {
         FCGI_VERSION_1, FCGI_STDIN, 
         (char)(0x1244 >> 8),(char) (0x1244 & 0xFF),
         0, 0,0, 0,
     };
-    sendNameValuePairs(sd);
-    sendValidation( write(sd, &target_req, sizeof(FCGI_Header) ) ); 
-
-    char buff[600];
-    int size_read = read(sd, buff, 600);
-
-    if(size_read == 0)
+    sendValidation( write(sd, &empty_stdin, sizeof(FCGI_Header) ) ); 
+}
+extern "C" const char* fastCgiRequest(int sd, const char* file, const char* method, 
+                const char* content = nullptr, const char* content_len = nullptr, const char* content_type= nullptr)
+{
+    Values[0] = file;
+    Values[1] = file;
+    Values[3] = method;
+    if(content != nullptr)
     {
-        cout << "request error, no response \n";
+        nv_to_send = 6;
+        Values[4] = content_len;
+        Values[5] = content_type;
+        if( Values[4] == nullptr || Values[5] == nullptr)
+        {
+            printf("call requires content_len and content_type to be passed\n");
+            exit(-1);
+        }
+    }
+    else
+    {
+        nv_to_send = 4;
+    }
+    beginCgiRequest(sd);
+    sendNameValuePairs(sd);
+    if(content != nullptr)
+    {
+        sendArgsToStdin(sd, content);
+    }
+    endCgiRequest(sd);
+
+
+    if (buff != nullptr)
+    {
+        printf("buffer memory leak, call  freeBuffer() before processing another request");
         exit(-1);
     }
-    char* ptr = (char*)malloc( size_read - sizeof(FCGI_Header) + 1);
-    memcpy(ptr, buff + sizeof(FCGI_Header),  size_read - sizeof(FCGI_Header));
-    ptr[size_read - sizeof(FCGI_Header)] = '\0';
 
-    return ptr;
+    char* buff = new char[1200 + 1];
+    int size_read = read(sd, buff, 1200);
+
+    if(size_read <= 0)
+    {
+        printf("read error: %s\n", strerror(errno));;
+        exit(-1);
+    }
+    FCGI_Header* responseHeader =(FCGI_Header*) buff;
+    unsigned short stringSize = (responseHeader->contentLengthB1 << 8) | responseHeader->contentLengthB0;
+
+    buff[sizeof(FCGI_Header) + stringSize] = '\0';
+    return buff + sizeof(FCGI_Header);
+}
 
 
+extern "C" void freeBuffer()
+{
+    delete[] buff;
+    buff = nullptr;
 }
 
 #ifdef TEST
@@ -121,10 +188,7 @@ int main()
         printf("socket creation failed...\n");
         exit(0);
     }
-    else
-    {
-        printf("Socket successfully created..\n");
-    }
+
     bzero(&servaddr, sizeof(servaddr));
  
     // assign IP, PORT
@@ -138,15 +202,11 @@ int main()
         printf("connection with the server failed...\n");
         exit(0);
     }
-    else
-    {
-        printf("connected to the server..\n");
-    }
 
-    const char* msg = fastCgiRequest(sockfd, "/home/mateusz/python_projects/HttpServer/tests/php1/index.php");
+    const char* msg = fastCgiRequest(sockfd, "/home/mateusz/python_projects/HttpServer/tests/php1/order.php", "POST", "paczkow=25&grzebieni=1234" ,"25", "application/x-www-form-urlencoded");
 
-    printf("%s", msg);
-    free((void*)msg);
+    printf("%s\n", msg);
+    freeBuffer();
     close(sockfd);
 }
 
