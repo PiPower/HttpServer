@@ -1,12 +1,15 @@
 #include "fast_cgi.h"
+#include <vector>
 
 using namespace std;
 
-const char* Names[6] = {"SCRIPT_NAME", "SCRIPT_FILENAME", "QUERY_STRING", "REQUEST_METHOD", "CONTENT_LENGTH", "CONTENT_TYPE"};
-const char* Values[6] = { nullptr, nullptr, "VAR1", nullptr, nullptr, nullptr};
+//const char* Names[7] = {"SCRIPT_NAME", "SCRIPT_FILENAME", "QUERY_STRING", "REQUEST_METHOD", "CONTENT_LENGTH", "CONTENT_TYPE", "PHPSESSID"};
+//const char* Values[7] = { nullptr, nullptr, "VAR1", nullptr, nullptr, nullptr, nullptr};
 int nv_to_send = 0; 
 char* buff = nullptr;
 
+vector<const char* > Names;
+vector<const char* > Values;
 void encodeLen(char* arr, unsigned int size)
 {
     unsigned int nameLenByteSize = size <= 127 ? 1 : 4;
@@ -31,7 +34,7 @@ void sendNameValuePairs(int sd)
 {
     char encodedNameLen[4];
     char encodedValueLen[4];
-    for(int i=0; i < nv_to_send; i++)
+    for(int i=0; i < Names.size(); i++)
     {
         unsigned int nameLength = strlen(Names[i]);
         unsigned int valueLength = strlen(Values[i]);
@@ -118,26 +121,51 @@ void endCgiRequest(int sd)
     sendValidation( write(sd, &empty_stdin, sizeof(FCGI_Header) ) ); 
 }
 extern "C" const char* fastCgiRequest(int sd, const char* file, const char* method, 
-                const char* content = nullptr, const char* content_len = nullptr, const char* content_type= nullptr)
+                const char* content = nullptr, const char* content_len = nullptr, 
+                        const char* content_type= nullptr, const char* session_id = nullptr)
 {
-    Values[0] = file;
-    Values[1] = file;
-    Values[3] = method;
-    if(content != nullptr)
+    Names.push_back("SCRIPT_NAME");
+    Names.push_back("SCRIPT_FILENAME");
+    Names.push_back( "REQUEST_METHOD");
+    Names.push_back("QUERY_STRING");
+
+    Values.push_back(file);
+    Values.push_back(file);
+    Values.push_back(method);
+    Values.push_back("VAR1" );
+
+    if( session_id != nullptr)
     {
-        nv_to_send = 6;
-        Values[4] = content_len;
-        Values[5] = content_type;
-        if( Values[4] == nullptr || Values[5] == nullptr)
+        Names.push_back("HTTP_COOKIE");
+        Values.push_back(session_id);
+    }
+
+    if(content != nullptr)
+    {   
+        Names.push_back("CONTENT_LENGTH");
+        Names.push_back("CONTENT_TYPE");
+        Values.push_back(content_len);
+        Values.push_back(content_type);
+
+        if( content_type == nullptr || content_len == nullptr)
         {
             printf("call requires content_len and content_type to be passed\n");
             exit(-1);
         }
+
     }
-    else
+
+#ifdef VERBOSE
+    for(int i =0 ; i < Names.size(); i++)
     {
-        nv_to_send = 4;
+        printf("Name: %s | Value: %s \n", Names[i], Values[i] );
     }
+    if ( content != nullptr)
+    {
+        printf("content: %s\n", content);
+    }
+    printf("------------ \n");
+#endif
     beginCgiRequest(sd);
     sendNameValuePairs(sd);
     if(content != nullptr)
@@ -173,6 +201,9 @@ extern "C" void freeBuffer()
 {
     delete[] buff;
     buff = nullptr;
+
+    Names.clear();
+    Values.clear();
 }
 
 #ifdef TEST
@@ -203,11 +234,14 @@ int main()
         exit(0);
     }
 
-    const char* msg = fastCgiRequest(sockfd, "/home/mateusz/python_projects/HttpServer/tests/php1/order.php", "POST", "paczkow=25&grzebieni=1234" ,"25", "application/x-www-form-urlencoded");
-
+    //const char* msg = fastCgiRequest(sockfd, "/home/mateusz/python_projects/HttpServer/tests/php2/zaloguj.php", 
+        //"POST", "login=25&haslo=1234" ,"19", "application/x-www-form-urlencoded");
+    const char* msg = fastCgiRequest(sockfd, "/home/mateusz/python_projects/HttpServer/tests/php2/index.php", 
+        "POST", nullptr ,nullptr, nullptr, "PHPSESSID=i6g2fbgvmb6kr90kbn64oi74ik; path=/");
     printf("%s\n", msg);
     freeBuffer();
     close(sockfd);
 }
 
 #endif
+
