@@ -3,5 +3,5 @@
 fpm_php_exec='/usr/local/sbin/php-fpm'
 fpm_config_file='/usr/local/sbin/php-fpm.conf'
 
-$fpm_php_exec -c --fpm-config $fpm_config_file
+$fpm_php_exec --fpm-config $fpm_config_file
 

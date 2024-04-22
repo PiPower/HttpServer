@@ -20,11 +20,24 @@ def callPhp_Fpm(request, config):
     
     return html_body
 
+def getResource(request, config):
+    return b""
 
 def requestHandler(request, clientSocket, config):
+    print(request.decode("ascii",errors='ignore'))
+    print("----------")
     request = HttpReuquest( request.decode("ascii",errors='ignore') )
 
-    html_body = callPhp_Fpm(request, config)
+    if request.resource == "/favicon.ico":
+        response = b"HTTP/1.1 404 Not Found\r\nConnection:  keep-alive\r\n\r\n"
+        clientSocket.send(response)
+        return 
+
+    if  request.getResourcePath(config["root_directory"]).split(".")[-1] == "php" :
+        html_body = callPhp_Fpm(request, config)
+    else:
+        html_body = getResource(request, config)
+
 
     body_len = str(len(html_body.partition(b"\r\n\r\n")[2])).encode("ascii") + b"\r\n"
     global Code_302
@@ -40,18 +53,24 @@ def handleClients(clientList, config):
     while True:
         if len(clientList) < 1:
             continue
+
+        i %= len(clientList)
         (clientSocket, clientAddress) = clientList[i]
+
         request = bytearray()
 
         while True:
             try:
-                buff = clientSocket.recv(1024, socket.MSG_DONTWAIT)
-            except BlockingIOError as ioErr:
+                buff = clientSocket.recv(10000, socket.MSG_DONTWAIT)
+            except Exception as ioErr:
                 break
-
             request = request + buff
+            
+            #closed socket
+            if len(buff) == 0:
+                clientList.pop(i )
+                break
             
         if len(request) > 0:
             requestHandler(request, clientSocket, config)
         i += 1
-        i %= len(clientList)

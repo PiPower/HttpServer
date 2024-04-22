@@ -6,7 +6,7 @@ class HttpReuquest:
         self.method = headers[0].split(" ", 2)[0]
         self.resource = headers[0].split(" ", 2)[1]
         self.protocol_version = headers[0].split(" ", 2)[2]
-        self.headers = {  line.split(": ")[0] : line.split(": ")[1] for line in headers[1:] }
+        self.headers = {  line.split(": ")[0] : line.split(": ")[1] for line in headers[1:] if len(line)> 0 }
     
     def getResourcePath(self, rootDir):
         if self.resource == "/":

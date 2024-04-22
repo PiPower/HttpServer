@@ -1,6 +1,7 @@
 <!DOCTYPE HTML>
 <html lang="pl">
 <head>
+	<!-- Made by Pasja informatyki: https://www.youtube.com/@Pasjainformatyki  -->
 	<meta charset="utf-8" />
 	<title>Piekarnia</title>
 </head>

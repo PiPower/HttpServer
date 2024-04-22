@@ -2,7 +2,7 @@
 #include <vector>
 
 using namespace std;
-
+#define BUFF_SIZE 40000
 //const char* Names[7] = {"SCRIPT_NAME", "SCRIPT_FILENAME", "QUERY_STRING", "REQUEST_METHOD", "CONTENT_LENGTH", "CONTENT_TYPE", "PHPSESSID"};
 //const char* Values[7] = { nullptr, nullptr, "VAR1", nullptr, nullptr, nullptr, nullptr};
 int nv_to_send = 0; 
@@ -181,8 +181,8 @@ extern "C" const char* fastCgiRequest(int sd, const char* file, const char* meth
         exit(-1);
     }
 
-    char* buff = new char[1200 + 1];
-    int size_read = read(sd, buff, 1200);
+    char* buff = new char[BUFF_SIZE + 1];
+    int size_read = read(sd, buff, BUFF_SIZE);
 
     if(size_read <= 0)
     {

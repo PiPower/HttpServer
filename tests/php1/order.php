@@ -1,4 +1,3 @@
-<!-- Made by Pasja informatyki: https://www.youtube.com/watch?v=tD0Q5QwoQJI  -->
 
 <!DOCTYPE HTML>
 <html lang="pl">
