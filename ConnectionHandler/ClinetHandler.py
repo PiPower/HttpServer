@@ -1,8 +1,14 @@
 import socket
 from http_requests import HttpReuquest
 from php_fpm.cpp_interface import send_fpm_script_translation_request
+import mimetypes
 
 Code_302 = False
+
+def getContentType(resource):
+    (type, encoding) = mimetypes.guess_type(resource)
+    return type
+
 
 def callPhp_Fpm(request, config):
     fpm_server = socket.socket(socket.AF_INET, socket.SOCK_STREAM, 0 )
@@ -21,10 +27,17 @@ def callPhp_Fpm(request, config):
     return html_body
 
 def getResource(request, config):
-    return b""
+    resourcePath = request.getResourcePath(config["root_directory"])
+    with open(resourcePath, mode="rb") as file:
+        body = file.read()
+
+    response =  "Content-Type: {}\r\n\r\n".format(getContentType(request.resource) ).encode("ascii") + body
+
+
+    return response
 
 def requestHandler(request, clientSocket, config):
-    print(request.decode("ascii",errors='ignore'))
+    print(request.decode("ascii", errors='ignore'))
     print("----------")
     request = HttpReuquest( request.decode("ascii",errors='ignore') )
 
@@ -65,7 +78,7 @@ def handleClients(clientList, config):
             except Exception as ioErr:
                 break
             request = request + buff
-            
+
             #closed socket
             if len(buff) == 0:
                 clientList.pop(i )
