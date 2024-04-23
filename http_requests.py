@@ -13,5 +13,7 @@ class HttpReuquest:
             return rootDir + "index.php"
         return rootDir + self.resource[1:]
     
+    def getMethod(self):
+        return self.method
     def getHeader(self, key):
         return self.headers.get(key)

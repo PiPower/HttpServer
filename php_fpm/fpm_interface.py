@@ -1,6 +1,9 @@
 import subprocess
 import os
 import ctypes
+import socket
+from http_requests import HttpReuquest
+
 
 fastCgiRequest = None
 freeBuffer = None
@@ -35,3 +38,20 @@ def send_fpm_script_translation_request(sd, request, root_dir):
     body = fastCgiRequest(sd, file_path.encode("ascii"), request.method.encode("ascii"), content, content_len, content_type, cookie)
     freeBuffer()
     return body
+
+
+def callPhp_Fpm(request, config):
+    fpm_server = socket.socket(socket.AF_INET, socket.SOCK_STREAM, 0 )
+    fpm_server.connect( ( config["fpm_ip"], config["fpm_port"]) )
+    html_body = send_fpm_script_translation_request(fpm_server.fileno(), request, config["root_directory"])
+    fpm_server.close()
+
+    global Code_302
+    Code_302 = False
+
+    msg = HttpReuquest( "GET / HTTP/1.1\r\n" + html_body.decode("ascii",errors='ignore') )
+    if msg.getHeader("Status") == "302 Found":
+        Code_302 = True
+       
+    
+    return html_body
