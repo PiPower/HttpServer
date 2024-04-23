@@ -45,13 +45,27 @@ def callPhp_Fpm(request, config):
     fpm_server.connect( ( config["fpm_ip"], config["fpm_port"]) )
     html_body = send_fpm_script_translation_request(fpm_server.fileno(), request, config["root_directory"])
     fpm_server.close()
-
-    global Code_302
-    Code_302 = False
-
-    msg = HttpReuquest( "GET / HTTP/1.1\r\n" + html_body.decode("ascii",errors='ignore') )
-    if msg.getHeader("Status") == "302 Found":
-        Code_302 = True
        
-    
     return html_body
+
+
+def process_php_file(request, config):
+    fpm_response = callPhp_Fpm(request, config)
+
+    headers, _, body = fpm_response.partition(b"\r\n\r\n")
+    headers = {  line.split(b": ")[0] : line.split(b": ")[1] for line in headers.split(b"\r\n") if len(line)> 0 }
+
+    if headers.get(b"Status")  == None: 
+        status_line = b"HTTP/1.1 200 Ok\r\n"
+    elif headers.get(b"Status")  == b"302 Found":
+        status_line = b"HTTP/1.1 302 Found\r\n"
+        del headers[b"Status"]
+    else:
+        print("unsuppurted php error message")
+        exit(-1)
+
+    headers = b"Connection:  keep-alive\r\nContent-Length: " + str(len(body)).encode("ascii") + \
+                        b"\r\n" + b"\r\n".join([b": ".join( data) for data in headers.items()]) + b"\r\n\r\n"
+
+    return status_line + headers + body
+
