@@ -6,10 +6,9 @@ using namespace std;
 //const char* Names[7] = {"SCRIPT_NAME", "SCRIPT_FILENAME", "QUERY_STRING", "REQUEST_METHOD", "CONTENT_LENGTH", "CONTENT_TYPE", "PHPSESSID"};
 //const char* Values[7] = { nullptr, nullptr, "VAR1", nullptr, nullptr, nullptr, nullptr};
 int nv_to_send = 0; 
-char* buff = nullptr;
 
-vector<const char* > Names;
-vector<const char* > Values;
+char* buffTable[THREAD_COUNT];
+
 void encodeLen(char* arr, unsigned int size)
 {
     unsigned int nameLenByteSize = size <= 127 ? 1 : 4;
@@ -30,7 +29,7 @@ void sendValidation(int i)
     }
 }
 
-void sendNameValuePairs(int sd)
+void sendNameValuePairs(int sd, vector<const char* > Names, vector<const char*> Values )
 {
     char encodedNameLen[4];
     char encodedValueLen[4];
@@ -120,10 +119,13 @@ void endCgiRequest(int sd)
     };
     sendValidation( write(sd, &empty_stdin, sizeof(FCGI_Header) ) ); 
 }
-extern "C" const char* fastCgiRequest(int sd, const char* file, const char* method, 
+extern "C" const char* fastCgiRequest(int thread_idx, int sd, const char* file, const char* method, 
                 const char* content = nullptr, const char* content_len = nullptr, 
                         const char* content_type= nullptr, const char* session_id = nullptr)
 {
+    vector<const char* > Names;
+    vector<const char* > Values;
+
     Names.push_back("SCRIPT_NAME");
     Names.push_back("SCRIPT_FILENAME");
     Names.push_back( "REQUEST_METHOD");
@@ -167,43 +169,39 @@ extern "C" const char* fastCgiRequest(int sd, const char* file, const char* meth
     printf("------------ \n");
 #endif
     beginCgiRequest(sd);
-    sendNameValuePairs(sd);
+    sendNameValuePairs(sd, Names, Values);
     if(content != nullptr)
     {
         sendArgsToStdin(sd, content);
     }
     endCgiRequest(sd);
 
-
-    if (buff != nullptr)
+    if (buffTable[thread_idx] != nullptr)
     {
         printf("buffer memory leak, call  freeBuffer() before processing another request");
         exit(-1);
     }
 
-    char* buff = new char[BUFF_SIZE + 1];
-    int size_read = read(sd, buff, BUFF_SIZE);
+    buffTable[thread_idx] = new char[BUFF_SIZE + 1];
+    int size_read = read(sd, buffTable[thread_idx], BUFF_SIZE);
 
     if(size_read <= 0)
     {
         printf("read error: %s\n", strerror(errno));;
         exit(-1);
     }
-    FCGI_Header* responseHeader =(FCGI_Header*) buff;
+    FCGI_Header* responseHeader =(FCGI_Header*) buffTable[thread_idx];
     unsigned short stringSize = (responseHeader->contentLengthB1 << 8) | responseHeader->contentLengthB0;
 
-    buff[sizeof(FCGI_Header) + stringSize] = '\0';
-    return buff + sizeof(FCGI_Header);
+    buffTable[thread_idx][sizeof(FCGI_Header) + stringSize] = '\0';
+    return buffTable[thread_idx] + sizeof(FCGI_Header);
 }
 
 
-extern "C" void freeBuffer()
+extern "C" void freeBuffer(int thread_idx)
 {
-    delete[] buff;
-    buff = nullptr;
-
-    Names.clear();
-    Values.clear();
+    delete[]  buffTable[thread_idx];
+    buffTable[thread_idx] = nullptr;
 }
 
 #ifdef TEST
@@ -236,10 +234,10 @@ int main()
 
     //const char* msg = fastCgiRequest(sockfd, "/home/mateusz/python_projects/HttpServer/tests/php2/zaloguj.php", 
         //"POST", "login=25&haslo=1234" ,"19", "application/x-www-form-urlencoded");
-    const char* msg = fastCgiRequest(sockfd, "/home/mateusz/python_projects/HttpServer/tests/php2/index.php", 
+    const char* msg = fastCgiRequest(0, sockfd, "/home/mateusz/python_projects/HttpServer/tests/php2/index.php", 
         "POST", nullptr ,nullptr, nullptr, "PHPSESSID=i6g2fbgvmb6kr90kbn64oi74ik; path=/");
     printf("%s\n", msg);
-    freeBuffer();
+    freeBuffer(0);
     close(sockfd);
 }
 
